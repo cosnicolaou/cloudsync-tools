@@ -3,19 +3,93 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/fs"
-	"os"
-	"sync"
-	"sync/atomic"
 
-	"cloudeng.io/file"
+	"cloudeng.io/cmdutil/flags"
+	"cloudeng.io/errors"
 	"cloudeng.io/file/filewalk"
+	"cloudeng.io/file/filewalk/find"
 	"cloudeng.io/file/filewalk/localfs"
+	"cloudeng.io/file/matcher"
 )
 
 type walkCmd struct {
 }
 
+type WalkFlags struct {
+	Recurse bool `subcmd:"recurse,false,walk recursively"`
+	Stats   bool `subcmd:"stats,false,print stats"`
+}
+
+type walkListFlags struct {
+	WalkFlags
+	Long bool `subcmd:"long,false,print long listing"`
+	All  bool `subcmd:"all,false,'print all files, including hidden . files and directories'"`
+}
+
+type walkFindFlags struct {
+	WalkFlags
+	Prune    bool            `subcmd:"prune,false,stop search when a directory match is found"`
+	Prefixes flags.Repeating `subcmd:"prefix,,prefix expression components"`
+	Files    flags.Repeating `subcmd:"file,,file expression components"`
+}
+
+func (walkCmd) parse(args []string) (matcher.T, error) {
+	items := []matcher.Item{}
+	for _, a := range args {
+		switch a {
+		case "d", "dir", "directory":
+			items = append(items, matcher.FileType("d"))
+		case "f", "file":
+			items = append(items, matcher.FileType("f"))
+		case "l", "link":
+			items = append(items, matcher.FileType("l"))
+		case "or":
+			items = append(items, matcher.OR())
+		case "and":
+			items = append(items, matcher.AND())
+		default:
+			items = append(items, matcher.Regexp(a))
+		}
+	}
+	return matcher.New(items...)
+}
+
+func (wc walkCmd) find(ctx context.Context, values interface{}, args []string) error {
+	ff := values.(*walkFindFlags)
+
+	pm, err := wc.parse(ff.Prefixes.Values)
+	if err != nil {
+		return err
+	}
+	fm, err := wc.parse(ff.Files.Values)
+	if err != nil {
+		return err
+	}
+
+	fs := localfs.New()
+	errs := &errors.M{}
+	ch := make(chan find.Found, 1000)
+	handler := find.New(fs, ch, pm, fm, ff.Prune)
+
+	go func() {
+		defer close(ch)
+		wk := filewalk.New(fs, handler)
+		for _, dir := range args {
+			if err := wk.Walk(ctx, dir); err != nil {
+				errs.Append(err)
+				return
+			}
+		}
+	}()
+
+	for f := range ch {
+		fmt.Println(fs.Join(f.Prefix, f.Name))
+
+	}
+	return errs.Err()
+}
+
+/*
 func (wc walkCmd) list(ctx context.Context, values interface{}, args []string) error {
 	wlf := values.(*walkListFlags)
 	fs := localfs.New()
@@ -26,13 +100,6 @@ func (wc walkCmd) list(ctx context.Context, values interface{}, args []string) e
 		}
 	}
 	return nil
-}
-
-type walkListFlags struct {
-	Recurse bool `subcmd:"recurse,false,walk recursively"`
-	Count   bool `subcmd:"count-only,false,print count of files and directories"`
-	Long    bool `subcmd:"long,false,print long listing"`
-	All     bool `subcmd:"all,false,'print all files, including hidden . files and directories'"`
 }
 
 type walker struct {
@@ -104,3 +171,4 @@ func (w *walker) Done(ctx context.Context, state *walkerState, prefix string, er
 	fmt.Println()
 	return err
 }
+*/

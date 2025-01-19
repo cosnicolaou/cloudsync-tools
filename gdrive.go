@@ -10,8 +10,8 @@ import (
 const gdriveCommand = `- name: gdrive
   summary: work with google drive
   commands:
-    - name: list-drives
-      summary: list the available drives
+	- name: list-drives
+	  summary: list the available drives
 `
 
 func newGDriveCLI() subcmd.Extension {

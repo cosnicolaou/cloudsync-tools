@@ -36,17 +36,22 @@ commands:
 	- name: walk
 	  summary: efficiently walk large directories and directory trees
 	  commands:
-		- name: list
+		- name: find
 		  arguments:
 			- <directory>
 			- ...
 
 	{{range subcmdExtension "gdrive"}}{{.}}
 	{{end}}
+
+	{{range subcmdExtension "dropbox"}}{{.}}
+	{{end}}
 `
 
 func cli() *subcmd.CommandSetYAML {
-	cmdSet := subcmd.MustFromYAMLTemplate(commands, newGDriveCLI())
+	cmdSet := subcmd.MustFromYAMLTemplate(commands,
+		newGDriveCLI(),
+		newDropboxCLI())
 	cmdSet.MustAddExtensions()
 
 	sl := softlinkCmds{}
@@ -56,7 +61,8 @@ func cli() *subcmd.CommandSetYAML {
 	cmdSet.Set("softlinks", "backups", "delete").MustRunner(sl.delete, &struct{}{})
 
 	wk := walkCmd{}
-	cmdSet.Set("walk", "list").MustRunner(wk.list, &walkListFlags{})
+	cmdSet.Set("walk", "find").MustRunner(wk.find, &walkFindFlags{})
+	//	cmdSet.Set("walk", "ls").MustRunner(wk.ls, &walkListFlags{})
 
 	return cmdSet
 }
